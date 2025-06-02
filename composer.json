@@ -1,0 +1,14 @@
+{
+    "name": "user/kasir",
+    "description": "Sistem kasir berbasis PHP",
+    "authors": [
+        {
+            "name": "ndaiii",
+            "email": "adinda.28122020@gmail.com"
+        }
+    ],
+    "require": {
+        "phpmailer/phpmailer": "^6.9",
+        "picqer/php-barcode-generator": "^3.2"
+    }
+}
