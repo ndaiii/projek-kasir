@@ -12,23 +12,27 @@ if (mysqli_num_rows($column_exists) == 0) {
     mysqli_query($conn, $add_column);
 }
 
+// Update last_activity berdasarkan transaksi terbaru, tapi status akan dikelola terpisah
 $update_from_transaksi = "UPDATE member m
                           LEFT JOIN (
                               SELECT fid_member, MAX(tanggal_pembelian) as last_transaction 
                               FROM transaksi 
+                              WHERE tanggal_pembelian >= DATE_SUB(NOW(), INTERVAL 2 MINUTE)
                               GROUP BY fid_member
                           ) t ON m.id_member = t.fid_member
-                          SET m.last_activity = COALESCE(t.last_transaction, m.last_activity),
-                              m.status = CASE 
-                                  WHEN t.fid_member IS NOT NULL THEN 'Aktif' 
-                                  WHEN m.last_activity >= DATE_SUB(NOW(), INTERVAL 3 MONTH) THEN 'Aktif'
-                                  ELSE 'Tidak Aktif'
-                              END";
+                          SET m.last_activity = COALESCE(t.last_transaction, m.last_activity)";
 mysqli_query($conn, $update_from_transaksi);
 
-// Hapus member yang tidak aktif selama lebih dari 3 bulan (setelah status tidak aktif)
-$delete_inactive_members = "DELETE FROM member WHERE status = 'Tidak Aktif' AND last_activity < DATE_SUB(NOW(), INTERVAL 6 MONTH)";
-mysqli_query($conn, $delete_inactive_members);
+// Auto-deaktivasi member yang tidak bertransaksi selama 2 menit
+$auto_deactivate = "UPDATE member 
+                   SET status = 'Tidak Aktif' 
+                   WHERE status = 'Aktif' 
+                   AND last_activity < DATE_SUB(NOW(), INTERVAL 2 MINUTE)";
+mysqli_query($conn, $auto_deactivate);
+
+// DIHAPUS: Auto-delete member tidak aktif 3 bulan - sesuai permintaan user
+// $delete_inactive_members = "DELETE FROM member WHERE status = 'Tidak Aktif' AND last_activity < DATE_SUB(NOW(), INTERVAL 6 MONTH)";
+// mysqli_query($conn, $delete_inactive_members);
 
 // Update last_activity untuk user yang sedang login (tetap dipertahankan)
 if (isset($_SESSION['user_id'])) {
@@ -70,7 +74,7 @@ if (isset($_POST['tambah_member'])) {
         $error_message = "Member dengan nama atau nomor telepon ini sudah terdaftar.";
     } else {
         $query_insert = "INSERT INTO member (nama_member, no_tlp, point, status, last_activity) 
-                        VALUES ('$nama_member', '$no_tlp', 0, 'Aktif', NOW())";
+                        VALUES ('$nama_member', '$no_tlp', 0, 'Tidak Aktif', NOW())";
         if (mysqli_query($conn, $query_insert)) {
             header('Location: member.php');
             exit;
@@ -147,26 +151,17 @@ if (isset($_POST['hapus_member'])) {
 
 // Function untuk menentukan status tampilan
 function getStatusDisplay($status, $days, $has_transactions) {
-    if ($has_transactions) {
-        return "<button class='btn btn-success'>Aktif</button>";
-    } elseif ($status == 'Aktif') {
+    if ($status == 'Aktif') {
         return "<button class='btn btn-success'>Aktif</button>";
     } else {
-        $months_inactive = floor($days / 30);
-        $remaining_months = 3 - $months_inactive;
-        
-        if ($remaining_months <= 0) {
-            return "<button class='btn btn-danger'>Tidak Aktif <span class='badge bg-warning text-dark'>Akan segera dihapus</span></button>";
-        } else {
-            return "<button class='btn btn-danger'>Tidak Aktif <span class='badge bg-warning text-dark'>$remaining_months bulan lagi akan dihapus</span></button>";
-        }
+        return "<button class='btn btn-danger'>Tidak Aktif</button>";
     }
 }
 
 // Function untuk menentukan apakah member bisa dihapus
 function canDeleteMember($status, $has_transactions) {
-    // Member aktif atau yang memiliki transaksi tidak bisa dihapus
-    if ($status == 'Aktif' || $has_transactions) {
+    // Hanya member yang tidak aktif dan tidak memiliki transaksi yang bisa dihapus manual
+    if ($status == 'Aktif') {
         return false;
     }
     return true;
@@ -207,7 +202,7 @@ function canDeleteMember($status, $has_transactions) {
         </div>
         <?php endif; ?>
         <div class="alert alert-info" role="alert">
-            <i class="fas fa-info-circle"></i> Member akan otomatis tidak aktif setelah 3 bulan tidak ada transaksi, dan akan dihapus setelah tidak aktif selama 3 bulan tambahan. Member yang memiliki transaksi akan selalu berstatus aktif. Point dikelola melalui sistem transaksi (1 point per transaksi, dikurangi saat digunakan). <strong>Member aktif tidak dapat dihapus secara manual.</strong>
+            <i class="fas fa-info-circle"></i> <strong>Sistem Status Member:</strong> Member baru berstatus "Tidak Aktif". Status akan berubah menjadi "Aktif" setelah melakukan transaksi dan konfirmasi pembayaran. Member yang tidak bertransaksi selama 2 menit akan otomatis berubah menjadi "Tidak Aktif". Point dikelola melalui sistem transaksi (1 point per transaksi, dikurangi saat digunakan). <strong>Member aktif tidak dapat dihapus secara manual.</strong>
         </div>
         <button class="btn btn-light mb-3 float-end" data-bs-toggle="modal" data-bs-target="#tambahMember">Tambah Pengguna</button>
         <table class="table table-bordered">
