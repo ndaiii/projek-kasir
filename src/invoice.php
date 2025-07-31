@@ -105,13 +105,14 @@ if (isset($_POST['konfirmasi_pembayaran'])) {
             
             error_log("Point calculation: Old points: $point_member, Used: $pointsUsed, From transaction: $pointFromTransaction, New points: $newPoints");
             
-            $sql_update_point = "UPDATE member SET point = ? WHERE id_member = ?";
+            // Update point dan status member menjadi Aktif setelah konfirmasi pembayaran
+            $sql_update_point = "UPDATE member SET point = ?, status = 'Aktif', last_activity = NOW() WHERE id_member = ?";
             $stmt_update_point = $conn->prepare($sql_update_point);
             $stmt_update_point->bind_param('ii', $newPoints, $id_member);
             
             if (!$stmt_update_point->execute()) {
-                error_log("Error updating member points: " . $stmt_update_point->error);
-                throw new Exception("Gagal mengupdate point member: " . $stmt_update_point->error);
+                error_log("Error updating member points and status: " . $stmt_update_point->error);
+                throw new Exception("Gagal mengupdate point dan status member: " . $stmt_update_point->error);
             }
             $stmt_update_point->close();
             
